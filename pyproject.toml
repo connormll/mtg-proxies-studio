@@ -10,11 +10,18 @@ dependencies = [
     "requests",
     "tqdm",
     "fpdf2>=2.3.0",
+    "pyusb>=1.2",
 ]
 
 [project.optional-dependencies]
+web = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
 dev = [
     "pytest",
+    "httpx>=0.28",
+    "fastapi>=0.115",
 ]
 
 [project.scripts]
@@ -106,6 +113,7 @@ future-annotations = true
 "cli.py" = ["T20"]
 "convert.py" = ["T20"]
 "deck_value.py" = ["T20"]
+"makercraft.py" = ["T20"]
 "tokens.py" = ["T20"]
 
 [tool.ruff.lint.flake8-annotations]
@@ -142,6 +150,7 @@ exclude = [".venv"]
 
 [tool.deptry.package_module_name_map]
 "fpdf2" = ["fpdf"]
+"pyusb" = ["usb"]
 
 [tool.deptry.per_rule_ignores] # To ignore specific rules for certain packages
 # e.g.: DEP002 = ["nbformat"] # nbformat is indirectly used by plotly in notebooks but not imported directly in the codebase

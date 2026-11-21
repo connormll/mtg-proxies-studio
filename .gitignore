@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Frontend dependencies
+web/node_modules/
+web/.vite/
+
+# Personal workspace backups
+backups/

@@ -5,6 +5,45 @@ from pathlib import Path
 import pytest
 
 
+def test_without_basic_lands() -> None:
+    from mtg_proxies.decklists import Decklist
+
+    decklist = Decklist()
+    decklist.append_comment("Lands")
+    decklist.append_card(10, {"name": "Forest", "type_line": "Basic Land — Forest"})
+    decklist.append_card(4, {"name": "Island", "type_line": "Basic Snow Land — Island"})
+    decklist.append_card(1, {"name": "Breeding Pool", "type_line": "Land — Forest Island"})
+    decklist.append_card(1, {"name": "Sol Ring", "type_line": "Artifact"})
+
+    filtered = decklist.without_basic_lands()
+
+    assert filtered.total_count == 2
+    assert filtered.total_count_unique == 2
+    assert [card["name"] for card in filtered.cards] == ["Breeding Pool", "Sol Ring"]
+    # The original decklist is not modified
+    assert decklist.total_count == 16
+
+
+def test_without_tokens() -> None:
+    from mtg_proxies.decklists import Decklist
+
+    decklist = Decklist()
+    decklist.append_comment("Tokens")
+    decklist.append_card(2, {"name": "Treasure", "layout": "token", "type_line": "Token Artifact — Treasure"})
+    decklist.append_card(1, {"name": "Ajani", "layout": "double_faced_token", "type_line": "Token Creature"})
+    decklist.append_card(1, {"name": "Sol Ring", "layout": "normal", "type_line": "Artifact"})
+    decklist.append_card(1, {"name": "Forest", "layout": "normal", "type_line": "Basic Land — Forest"})
+
+    filtered = decklist.without_tokens()
+
+    assert filtered.total_count == 2
+    assert filtered.total_count_unique == 2
+    assert [card["name"] for card in filtered.cards] == ["Sol Ring", "Forest"]
+    assert filtered.entries[0].text == "Tokens"  # Comments are kept
+    # The original decklist is not modified
+    assert decklist.total_count == 5
+
+
 def test_parsing(data_dir: Path) -> None:
     from mtg_proxies.decklists import parse_decklist
 
@@ -63,9 +102,9 @@ def test_parsing(data_dir: Path) -> None:
             ],
         ),
         (  # Incomplete name (but unique)
-            "1 Counterspel (EMA) 43",
-            "1 Counterspell (EMA) 43",
-            ["WARNING: Misspelled card name 'Counterspel'. Assuming you mean 'Counterspell'."],
+            "1 Arcane Signe (ELD) 331",
+            "1 Arcane Signet (ELD) 331",
+            ["WARNING: Misspelled card name 'Arcane Signe'. Assuming you mean 'Arcane Signet'."],
         ),
         (  # Incomplete name (ambiguous, few options)
             "1 Counterb",
@@ -77,7 +116,7 @@ def test_parsing(data_dir: Path) -> None:
             None,
             [
                 "ERROR: Unable to find card 'Counter'. Did you mean 'Cackling Counterpart', 'Counterspell', 'Counters',"
-                + " 'Countermand', 'Feral Encounter', 'Counterflux', ...?"
+                + " 'Countermand', 'Feral Encounter', 'Encounter the Unknown', ...?"
             ],
         ),
         (  # Non-black border with alternative

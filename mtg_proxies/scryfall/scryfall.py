@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import pickle
 import threading
 from collections import defaultdict
@@ -17,7 +18,6 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import Literal, overload
 
-import numpy as np
 import requests
 from tqdm import tqdm
 
@@ -43,7 +43,23 @@ def get_image(image_uri: str, *, silent: bool = False) -> str:
     """
     split = image_uri.split("/")
     file_name = split[-5] + "_" + split[-4] + "_" + split[-1].split("?")[0]
+    file_path = _cache_folder / file_name
+    if file_path.suffix.lower() == ".png" and file_path.is_file() and not _is_complete_png(file_path):
+        # Older versions could leave a partial download in the cache.
+        file_path.unlink(missing_ok=True)
     return get_file(file_name, image_uri, silent=silent)
+
+
+def _is_complete_png(path: Path) -> bool:
+    """Check whether a cached file is a complete PNG instead of a partial download."""
+    try:
+        with open(path, "rb") as f:
+            if f.read(8) != b"\x89PNG\r\n\x1a\n":
+                return False
+            f.seek(-8, os.SEEK_END)
+            return f.read(4) == b"IEND"
+    except OSError:
+        return False
 
 
 def get_file(file_name: str, url: str, *, silent: bool = False) -> str:
@@ -56,7 +72,7 @@ def get_file(file_name: str, url: str, *, silent: bool = False) -> str:
     """
     file_path = _cache_folder / file_name
     with _download_lock:
-        if not file_path.is_file():
+        if not file_path.is_file() or file_path.stat().st_size == 0:
             if "api.scryfall.com" in url:  # Apply rate limit
                 with scryfall_rate_limiter:
                     download(url, file_path, silent=silent)
@@ -67,24 +83,39 @@ def get_file(file_name: str, url: str, *, silent: bool = False) -> str:
 
 
 def download(url: str, dst: Path | str, *, chunk_size: int = 1024 * 4, silent: bool = False) -> None:
-    """Download a file with a tqdm progress bar."""
-    with requests.get(url, stream=True, headers=_headers) as req:
-        req.raise_for_status()
-        file_size = int(req.headers["Content-Length"]) if "Content-Length" in req.headers else None
-        with (
-            open(dst, "xb") as f,
-            tqdm(
-                total=file_size,
-                unit="B",
-                unit_scale=True,
-                desc=url.split("/")[-1],
-                disable=silent,
-            ) as pbar,
-        ):
-            for chunk in req.iter_content(chunk_size=chunk_size):
-                if chunk:
-                    f.write(chunk)
-                    pbar.update(len(chunk))
+    """Download a file with a tqdm progress bar.
+
+    The data is written to a temporary file and only moved into place once the
+    download is complete, so an interrupted download cannot leave a truncated
+    file in the cache.
+    """
+    dst = Path(dst)
+    partial = dst.with_name(f"{dst.name}.{os.getpid()}.part")
+    try:
+        with requests.get(url, stream=True, headers=_headers) as req:
+            req.raise_for_status()
+            file_size = int(req.headers["Content-Length"]) if "Content-Length" in req.headers else None
+            with (
+                open(partial, "wb") as f,
+                tqdm(
+                    total=file_size,
+                    unit="B",
+                    unit_scale=True,
+                    desc=url.split("/")[-1],
+                    disable=silent,
+                ) as pbar,
+            ):
+                for chunk in req.iter_content(chunk_size=chunk_size):
+                    if chunk:
+                        f.write(chunk)
+                        pbar.update(len(chunk))
+        downloaded_size = partial.stat().st_size
+        if file_size is not None and downloaded_size != file_size:
+            raise OSError(f"Incomplete download from {url}: {downloaded_size} of {file_size} bytes")
+        partial.replace(dst)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
 
 
 def depaginate(url: str) -> list[dict]:
@@ -206,6 +237,47 @@ def get_faces(card: dict) -> list[dict]:
     raise ValueError(f"Unknown layout {card['layout']}")
 
 
+def print_score(card: dict, mode: Literal["best", "all", "choices"] = "best") -> int:
+    """Score the quality of a printing. Higher is better."""
+    points = 0
+    if card["set"] != "mb1" and card["border_color"] != "gold":
+        points += 1
+    if card["frame"] == "2015":
+        points += 2
+    if not card["digital"]:
+        points += 4
+    if card["border_color"] == "black" and (
+        mode != "best" or "frame_effects" not in card or "extendedart" not in card["frame_effects"]
+    ):
+        points += 8
+    if card["collector_number"][-1] not in ["p", "s"] and card["nonfoil"]:
+        points += 16
+    if card["highres_image"]:
+        points += 32
+    if card["lang"] == "en":
+        points += 64
+
+    return points
+
+
+def _print_preference_key(
+    card: dict,
+    mode: Literal["best", "all", "choices"] = "best",
+) -> int:
+    """Sort key for printings: highest score first, ties keep their database order."""
+    return -print_score(card, mode)
+
+
+def _artwork_preference_key(card: dict) -> tuple[int, str, str, str]:
+    """Sort key for choosing one printing per artwork: best score, then oldest print."""
+    return (
+        -print_score(card),
+        card.get("released_at") or "9999-12-31",
+        card.get("set") or "",
+        str(card.get("collector_number") or ""),
+    )
+
+
 @overload
 def recommend_print(
     current: dict | None = None,
@@ -242,38 +314,16 @@ def recommend_print(
             oracle_id = current["oracle_id"]
 
     alternatives = cards_by_oracle_id()[oracle_id] if oracle_id is not None else get_cards(name=card_name)
-
-    def score(card: dict) -> int:
-        points = 0
-        if card["set"] != "mb1" and card["border_color"] != "gold":
-            points += 1
-        if card["frame"] == "2015":
-            points += 2
-        if not card["digital"]:
-            points += 4
-        if card["border_color"] == "black" and (
-            mode != "best" or "frame_effects" not in card or "extendedart" not in card["frame_effects"]
-        ):
-            points += 8
-        if card["collector_number"][-1] not in ["p", "s"] and card["nonfoil"]:
-            points += 16
-        if card["highres_image"]:
-            points += 32
-        if card["lang"] == "en":
-            points += 64
-
-        return points
-
-    scores = [score(card) for card in alternatives]
+    scores = [print_score(card, mode) for card in alternatives]
 
     if mode == "best":
-        if current is not None and scores[alternatives.index(current)] == np.max(scores):
+        if current is not None and scores[alternatives.index(current)] == max(scores):
             return current  # No better recommendation
 
-        # Return print with highest score
-        return alternatives[np.argmax(scores)]
+        # Return the first print with the highest score.
+        return alternatives[scores.index(max(scores))]
     if mode == "all":
-        recommendations = list(np.array(alternatives)[np.argsort(scores)][::-1])
+        recommendations = sorted(alternatives, key=lambda card: _print_preference_key(card, mode))
 
         # Bring current print to front
         if current is not None:
@@ -284,18 +334,16 @@ def recommend_print(
         # Return all card in descending order
         return recommendations
     if mode == "choices":
-        artworks = np.array([
-            get_faces(card)[0]["illustration_id"] if "illustration_id" in get_faces(card)[0] else card["id"]
-            for card in alternatives
-        ])  # Not all cards have illustrations, use id instead
-        choices = []
-        for artwork in set(artworks):
-            artwork_alternatives = np.array(alternatives)[artworks == artwork]
-            artwork_scores = np.array(scores)[artworks == artwork]
+        choices_by_artwork: dict[str, list[dict]] = {}
+        for card in alternatives:
+            face = get_faces(card)[0]
+            artwork = face.get("illustration_id") or card["id"]
+            choices_by_artwork.setdefault(artwork, []).append(card)
 
-            recommendations = artwork_alternatives[artwork_scores == np.max(artwork_scores)]
-            # TODO: Sort again
-            choices.extend(recommendations)
+        choices = [
+            min(group, key=lambda card: _print_preference_key(card, mode)) for group in choices_by_artwork.values()
+        ]
+        choices.sort(key=lambda card: _print_preference_key(card, mode))
 
         # Bring current print to front
         if current is not None:
@@ -359,6 +407,43 @@ def oracle_ids_by_name() -> dict[str, list[str]]:
 
     # Converts sets to lists
     return {k: list(v) for k, v in oracle_ids_by_name.items()}
+
+
+def get_printings(card_name: str) -> list[dict]:
+    """Get all printings of a card, recommended first.
+
+    Matches exact card names and the front face of double-faced cards.
+
+    Args:
+        card_name: English card name.
+
+    Returns:
+        All printings, sorted by recommendation.
+    """
+    printings = get_cards(name=card_name)
+    if not printings:
+        oracle_ids = oracle_ids_by_name().get(canonic_card_name(card_name), [])
+        printings = [card for oracle_id in oracle_ids for card in cards_by_oracle_id().get(oracle_id, [])]
+    return sorted(printings, key=_print_preference_key)
+
+
+def unique_artworks(printings: list[dict]) -> list[dict]:
+    """Get the recommended printing for each distinct artwork.
+
+    Args:
+        printings: Printings of a single card, as returned by `get_printings`.
+
+    Returns:
+        One printing per artwork, recommended first.
+    """
+    by_artwork: dict[str, list[dict]] = defaultdict(list)
+    for card in printings:
+        face = get_faces(card)[0]
+        artwork = face.get("illustration_id") or card["id"]
+        by_artwork[artwork].append(card)
+
+    best_by_artwork = [min(group, key=_artwork_preference_key) for group in by_artwork.values()]
+    return sorted(best_by_artwork, key=_print_preference_key)
 
 
 def get_price(oracle_id: str, currency: str = "eur", foil: bool | None = None) -> float | None:

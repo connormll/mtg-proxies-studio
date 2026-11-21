@@ -35,6 +35,18 @@ class Card:
         """
         return [face["image_uris"] for face in scryfall.get_faces(self.card)]
 
+    @property
+    def is_basic_land(self) -> bool:
+        """Whether this card is a basic land."""
+        type_line = self.card.get("type_line", "").split("—")[0].lower()
+        types = set(type_line.split())
+        return "basic" in types and "land" in types
+
+    @property
+    def is_token(self) -> bool:
+        """Whether this card is a token."""
+        return self.card.get("layout") in {"token", "double_faced_token"}
+
     def __format__(self, format_spec: str) -> str:
         if format_spec == "text":
             return f"{self.count} {self['name']}"
@@ -77,6 +89,20 @@ class Decklist:
     def extend(self, other: Decklist) -> None:
         """Append another decklist to this."""
         self.entries.extend(other.entries)
+
+    def without_basic_lands(self) -> Decklist:
+        """Return a copy of this decklist without basic lands."""
+        return Decklist(
+            entries=[entry for entry in self.entries if not (isinstance(entry, Card) and entry.is_basic_land)],
+            name=self.name,
+        )
+
+    def without_tokens(self) -> Decklist:
+        """Return a copy of this decklist without tokens."""
+        return Decklist(
+            entries=[entry for entry in self.entries if not (isinstance(entry, Card) and entry.is_token)],
+            name=self.name,
+        )
 
     def save(self, file: str | Path, fmt: Literal["arena", "text"] = "arena", mode: str = "w") -> None:
         """Write decklist to a file."""

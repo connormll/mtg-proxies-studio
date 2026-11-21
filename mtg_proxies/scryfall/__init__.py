@@ -7,9 +7,12 @@ from mtg_proxies.scryfall.scryfall import (
     get_faces,
     get_image,
     get_price,
+    get_printings,
     oracle_ids_by_name,
+    print_score,
     recommend_print,
     search,
+    unique_artworks,
 )
 
 __all__ = [
@@ -21,7 +24,10 @@ __all__ = [
     "get_faces",
     "get_image",
     "get_price",
+    "get_printings",
     "oracle_ids_by_name",
+    "print_score",
     "recommend_print",
     "search",
+    "unique_artworks",
 ]

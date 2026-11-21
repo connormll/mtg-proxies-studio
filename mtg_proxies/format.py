@@ -5,7 +5,7 @@ from __future__ import annotations
 
 def format_print(card_name: str | dict, set_id: str | None = None, collector_number: str | None = None) -> str:
     """Format a card into a human-readable string."""
-    if "name" in card_name:
+    if isinstance(card_name, dict):
         card_name, set_id, collector_number = card_name["name"], card_name["set"], card_name["collector_number"]
 
     return f"{card_name} ({set_id.upper()}) {collector_number}"
