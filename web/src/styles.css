@@ -2224,6 +2224,62 @@ main {
   text-align: left;
 }
 
+.replacement-key {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-width: 560px;
+  padding: 14px 0 28px;
+}
+
+.replacement-key strong {
+  display: block;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+}
+
+.replacement-key > div > p {
+  margin-top: 4px;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.replacement-key .field input[type="password"] {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.8rem;
+}
+
+.replacement-key .field input[type="password"]:hover {
+  border-color: var(--line-strong);
+}
+
+.replacement-key .field input[type="password"]:focus {
+  border-color: var(--accent);
+}
+
+.replacement-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.replacement-footer-meta {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .replacement-intro {
   display: flex;
   align-items: flex-start;

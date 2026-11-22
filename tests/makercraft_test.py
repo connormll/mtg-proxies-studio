@@ -82,7 +82,8 @@ def test_write_plt_file_is_full_sheet(tmp_path: Path) -> None:
     text = plt_file.read_text(encoding="utf-8")
     assert "TB25,9600,7568;" in text
     assert text.count("\nU") == 7  # Six card slots plus the final U0,0
-    assert "U8290,7411;" in text
+    # Rounded cards are cut at full size, so the 14 px border crop is ignored.
+    assert "U8386,7554;" in text
 
     second = write_plt_file(
         tmp_path / "second.plt",

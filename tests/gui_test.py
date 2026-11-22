@@ -100,7 +100,8 @@ def test_import_merges_cards_and_reports_lines(monkeypatch: pytest.MonkeyPatch) 
     assert result.cards[1].non_english is True
     assert result.cards[1].is_basic_land is True
     missing = [issue for issue in result.issues if issue.line == 4]
-    assert missing and all(issue.severity == "warning" and issue.skipped for issue in missing)
+    assert missing
+    assert all(issue.severity == "warning" and issue.skipped for issue in missing)
     assert not any(issue.severity == "error" for issue in result.issues)
     assert any(issue.severity == "warning" and issue.line == 3 and not issue.skipped for issue in result.issues)
     assert any(stage == "Reading decklist" and total == 4 for stage, _, total in updates)
@@ -444,9 +445,10 @@ def test_replacement_suggestions_parse_fenced_json() -> None:
     assert replacements._parse_suggestions(content) == [{"name": "Mana Vault", "reason": "Same ramp."}]
 
 
-def test_replacement_suggestions_require_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_replacement_suggestions_require_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from mtg_proxies.gui import replacements
 
+    monkeypatch.setenv("MTG_PROXIES_CONFIG_DIR", str(tmp_path))
     for name in ("OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY"):
         monkeypatch.delenv(name, raising=False)
 
@@ -454,7 +456,74 @@ def test_replacement_suggestions_require_api_key(monkeypatch: pytest.MonkeyPatch
         replacements._request_suggestions("prompt")
 
 
-def test_replacement_suggestions_call_opencode_go(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_replacement_suggestions_remember_saved_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import stat
+
+    from mtg_proxies.gui import replacements, settings
+
+    monkeypatch.setenv("MTG_PROXIES_CONFIG_DIR", str(tmp_path))
+    for name in ("OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
+    assert replacements.opencode_api_key() is None
+    replacements.save_opencode_api_key("  oc_sk_saved  ")
+
+    assert replacements.opencode_api_key() == "oc_sk_saved"
+    assert replacements.opencode_api_key_source() == "saved"
+    config = settings.config_path()
+    assert config.is_file()
+    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+
+    replacements.clear_opencode_api_key()
+    assert replacements.opencode_api_key() is None
+    assert replacements.opencode_api_key_source() is None
+
+
+def test_replacement_suggestions_environment_key_wins(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from mtg_proxies.gui import replacements
+
+    monkeypatch.setenv("MTG_PROXIES_CONFIG_DIR", str(tmp_path))
+    replacements.save_opencode_api_key("oc_sk_saved")
+    monkeypatch.setenv("OPENCODE_GO_API_KEY", "oc_sk_environment")
+
+    assert replacements.opencode_api_key() == "oc_sk_environment"
+    assert replacements.opencode_api_key_source() == "environment"
+
+
+def test_replacement_settings_api_saves_and_forgets_key(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from mtg_proxies.gui import app as app_module
+
+    monkeypatch.setenv("MTG_PROXIES_CONFIG_DIR", str(tmp_path))
+    for name in ("OPENCODE_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_ZEN_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
+    manager = app_module.JobManager(tmp_path / "jobs", max_workers=1)
+    app = app_module.create_app(manager)
+    with TestClient(app) as client:
+        initial = client.get("/api/replace/settings")
+        assert initial.status_code == 200
+        assert initial.json() == {"configured": False, "source": None, "model": "kimi-k3.1-pro"}
+
+        saved = client.put("/api/replace/settings", json={"api_key": "oc_sk_saved"})
+        assert saved.status_code == 200
+        assert saved.json() == {"configured": True, "source": "saved", "model": "kimi-k3.1-pro"}
+        assert "oc_sk_saved" not in saved.text
+
+        remembered = client.get("/api/replace/settings")
+        assert remembered.json()["configured"] is True
+        assert remembered.json()["source"] == "saved"
+
+        cleared = client.delete("/api/replace/settings")
+    assert cleared.status_code == 200
+    assert cleared.json() == {"configured": False, "source": None, "model": "kimi-k3.1-pro"}
+
+
+def test_replacement_suggestions_call_opencode_go(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from mtg_proxies.gui import replacements
 
     captured: dict[str, object] = {}
@@ -474,6 +543,7 @@ def test_replacement_suggestions_call_opencode_go(monkeypatch: pytest.MonkeyPatc
         captured["timeout"] = kwargs["timeout"]
         return Response()
 
+    monkeypatch.setenv("MTG_PROXIES_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("OPENCODE_API_KEY", "oc_sk_test")
     monkeypatch.setattr(replacements.requests, "post", fake_post)
 
@@ -511,12 +581,13 @@ def test_replacement_suggestions_effort_and_model_overrides(monkeypatch: pytest.
     assert replacements.model_name() == "kimi-k3.1-pro"
 
 
-def test_replacement_suggestions_report_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_replacement_suggestions_report_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from mtg_proxies.gui import replacements
 
     def fake_post(_url: str, **_kwargs: object) -> None:
         raise replacements.requests.Timeout("read timed out")
 
+    monkeypatch.setenv("MTG_PROXIES_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("OPENCODE_API_KEY", "oc_sk_test")
     monkeypatch.setattr(replacements.requests, "post", fake_post)
 
@@ -524,12 +595,13 @@ def test_replacement_suggestions_report_timeout(monkeypatch: pytest.MonkeyPatch)
         replacements._request_suggestions("prompt")
 
 
-def test_replacement_suggestions_report_connection_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_replacement_suggestions_report_connection_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from mtg_proxies.gui import replacements
 
     def fake_post(_url: str, **_kwargs: object) -> None:
         raise replacements.requests.ConnectionError("connection refused")
 
+    monkeypatch.setenv("MTG_PROXIES_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("OPENCODE_API_KEY", "oc_sk_test")
     monkeypatch.setattr(replacements.requests, "post", fake_post)
 
@@ -656,6 +728,40 @@ def test_generate_manual_cut_modes(
 
     assert captured["bleed"] == pytest.approx(expected_bleed)
     assert captured["corner_radius"] == pytest.approx(0.0)
+    assert captured["border_crop"] == 14
     assert captured["handcut"] is expected_handcut
     assert captured["slider"] is expected_slider
     assert captured["cropmarks"] is False
+
+
+def test_generate_rounded_cards_use_full_size(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The GUI should print rounded cards at full size too."""
+    from mtg_proxies.gui import generation
+    from mtg_proxies.gui.models import GenerateOptions, GenerateRequest, SelectedCard
+
+    sol_ring = _card("sol-id", "Sol Ring", oracle_id="sol-oracle")
+    captured: dict[str, object] = {}
+
+    def fake_pdf(_images: object, path: Path, **kwargs: object) -> None:
+        captured.update(kwargs)
+        Path(path).write_bytes(b"%PDF-1.4 test")
+
+    monkeypatch.setattr(generation.scryfall, "card_by_id", lambda: {"sol-id": sol_ring})
+    monkeypatch.setattr(generation, "fetch_scans_scryfall", lambda *_args, **_kwargs: ["front.png"])
+    monkeypatch.setattr(generation, "print_cards_fpdf", fake_pdf)
+
+    request = GenerateRequest(
+        cards=[SelectedCard(printing_id="sol-id", count=1)],
+        options=GenerateOptions(
+            mode="standard",
+            paper_width=8.5,
+            paper_height=11,
+            corner_radius=None,
+            cut_file=False,
+        ),
+    )
+
+    generation.generate_files(request, tmp_path, lambda *_args: None)
+
+    assert captured["corner_radius"] == pytest.approx(2.5)
+    assert captured["border_crop"] == 0

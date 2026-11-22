@@ -26,12 +26,21 @@ from mtg_proxies.gui.models import (
     PrintingRequest,
     PrintingsResult,
     ReplacementRequest,
+    ReplacementSettings,
+    ReplacementSettingsUpdate,
     SendToCutterRequest,
     SendToCutterResult,
 )
 from mtg_proxies.gui.printings import list_printings
 from mtg_proxies.gui.progress import ProgressReporter
-from mtg_proxies.gui.replacements import opencode_api_key, suggest_replacements
+from mtg_proxies.gui.replacements import (
+    clear_opencode_api_key,
+    model_name,
+    opencode_api_key,
+    opencode_api_key_source,
+    save_opencode_api_key,
+    suggest_replacements,
+)
 from mtg_proxies.makercraft import device_label, find_devices, send_plt
 
 logger = logging.getLogger(__name__)
@@ -54,6 +63,16 @@ npm run build</code></pre>
   <p>For frontend development, run <code>npm run dev</code> in <code>web/</code> and open the Vite URL.</p>
 </body>
 </html>"""
+
+
+def _replacement_settings() -> ReplacementSettings:
+    """Describe the configured OpenCode Go key without exposing it."""
+    configured = opencode_api_key() is not None
+    return ReplacementSettings(
+        configured=configured,
+        source=opencode_api_key_source() if configured else None,
+        model=model_name(),
+    )
 
 
 def _generation_result(request: Request, job_id: str) -> GenerationResult:
@@ -125,6 +144,37 @@ def create_app(job_manager: JobManager | None = None) -> FastAPI:
             return suggest_replacements(body, report).model_dump(mode="json")
 
         return JobCreated(job_id=manager.submit("suggest", target))
+
+    @app.get("/api/replace/settings", response_model=ReplacementSettings)
+    def get_replacement_settings() -> ReplacementSettings:
+        """Report whether an OpenCode Go key is available."""
+        return _replacement_settings()
+
+    @app.put("/api/replace/settings", response_model=ReplacementSettings)
+    def update_replacement_settings(body: ReplacementSettingsUpdate) -> ReplacementSettings:
+        """Save an OpenCode Go key so later launches remember it."""
+        try:
+            save_opencode_api_key(body.api_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="The OpenCode Go API key could not be saved on this computer.",
+            ) from exc
+        return _replacement_settings()
+
+    @app.delete("/api/replace/settings", response_model=ReplacementSettings)
+    def delete_replacement_settings() -> ReplacementSettings:
+        """Forget the locally saved OpenCode Go key."""
+        try:
+            clear_opencode_api_key()
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="The saved OpenCode Go API key could not be removed.",
+            ) from exc
+        return _replacement_settings()
 
     @app.get("/api/jobs/{job_id}", response_model=JobSnapshot)
     def get_job(job_id: str) -> JobSnapshot:

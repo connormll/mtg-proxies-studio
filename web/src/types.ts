@@ -77,6 +77,12 @@ export interface ReplacementRequest {
   deck: Array<{ printing_id: string; count: number }>;
 }
 
+export interface ReplacementSettings {
+  configured: boolean;
+  source: "environment" | "saved" | null;
+  model: string;
+}
+
 export interface ReplacementSuggestion {
   name: string;
   reason: string;

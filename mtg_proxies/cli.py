@@ -18,7 +18,7 @@ from mtg_proxies.decklists import archidekt, manastack, parse_decklist
 from mtg_proxies.decklists.decklist import Decklist
 from mtg_proxies.format import format_print
 from mtg_proxies.makercraft import list_devices, send_plt, write_plt_file
-from mtg_proxies.print_cards import SLIDER_DEFAULT_BLEED
+from mtg_proxies.print_cards import SLIDER_DEFAULT_BLEED, effective_border_crop
 from mtg_proxies.printings import PrintingOverride, apply_printing_overrides, parse_printing_override
 from mtg_proxies.scryfall import get_faces, get_printings, unique_artworks
 from mtg_proxies.tokens import get_tokens
@@ -266,7 +266,10 @@ def main() -> None:
     )
     print_parser.add_argument(
         "--border_crop",
-        help="how much to crop inner borders of printed cards, in source image pixels (default: %(default)s)",
+        help=(
+            "how much to crop inner borders of printed cards, in source image pixels; "
+            "ignored for rounded cards, which print at full size (default: %(default)s)"
+        ),
         type=int,
         default=14,
         metavar="PIXELS",
@@ -295,6 +298,7 @@ def main() -> None:
         "--corner_radius",
         help=(
             "corner radius of printed cards in mm, between 0 and 10; 0 disables rounding "
+            "and keeps the sleeve-proxy border crop; rounded cards print at full size "
             "(default: 2.5, or 0 with --handcut/--slider)"
         ),
         type=corner_radius_mm,
@@ -586,6 +590,7 @@ def main() -> None:
             args.bleed = SLIDER_DEFAULT_BLEED if args.slider else 0.0
         if args.corner_radius is None:
             args.corner_radius = 0.0 if (args.handcut or args.slider) else 2.5
+        args.border_crop = effective_border_crop(args.border_crop, args.corner_radius)
 
     match args.command:
         case "print":

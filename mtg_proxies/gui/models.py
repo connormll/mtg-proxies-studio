@@ -119,6 +119,20 @@ class ReplacementRequest(BaseModel):
     deck: list[SelectedCard] = Field(default_factory=list, max_length=1000)
 
 
+class ReplacementSettings(BaseModel):
+    """Whether Kimi replacement suggestions have an API key available."""
+
+    configured: bool
+    source: Literal["environment", "saved"] | None = None
+    model: str
+
+
+class ReplacementSettingsUpdate(BaseModel):
+    """An OpenCode Go API key to store for future launches."""
+
+    api_key: str = Field(min_length=1, max_length=512)
+
+
 class ReplacementSuggestion(BaseModel):
     """One card Kimi proposes as a functional replacement."""
 

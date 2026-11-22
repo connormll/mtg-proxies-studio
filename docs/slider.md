@@ -89,7 +89,15 @@ mtg-proxies print decklist.txt proxies.pdf --paper 8.5x11 --slider --bleed 3
 # full 63.5 x 88.9 mm card, 2 mm bleed
 mtg-proxies print decklist.txt proxies.pdf --paper 8.5x11 --slider \
   --bleed 2 --border_crop 0
+
+# full-size rounded card (e.g. for a 3 mm corner rounder)
+mtg-proxies print decklist.txt proxies.pdf --paper 8.5x11 --slider \
+  --bleed 2 --corner-radius 3
 ```
+
+Rounded cards print at full size automatically, because a corner rounder does
+not change the card's width or height; the border crop is only used for
+square-cornered cards.
 
 With `--border_crop 0` and 2 mm bleed, nine cards still fit on Letter, but the
 top and bottom margins shrink to about 2.4 mm. Print a test page and check that

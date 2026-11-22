@@ -12,6 +12,7 @@ from typing import Any
 import requests
 
 import mtg_proxies.scryfall as scryfall
+from mtg_proxies.gui import settings as gui_settings
 from mtg_proxies.gui.cards import card_key, card_summary
 from mtg_proxies.gui.models import ReplacementRequest, ReplacementResult, ReplacementSuggestion
 from mtg_proxies.gui.progress import ProgressReporter
@@ -33,13 +34,40 @@ _COLOR_ORDER = "WUBRG"
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
 
-def opencode_api_key() -> str | None:
-    """Return the configured OpenCode Go API key, if any."""
+def _environment_api_key() -> str | None:
+    """Return an API key from the process environment, if any."""
     for name in (_API_KEY_ENV, *_API_KEY_ALIASES):
         value = os.environ.get(name, "").strip()
         if value:
             return value
     return None
+
+
+def opencode_api_key() -> str | None:
+    """Return the configured OpenCode Go API key, if any."""
+    return _environment_api_key() or gui_settings.saved_api_key()
+
+
+def opencode_api_key_source() -> str | None:
+    """Return where the API key comes from, or None when it is not configured."""
+    if _environment_api_key():
+        return "environment"
+    if gui_settings.saved_api_key():
+        return "saved"
+    return None
+
+
+def save_opencode_api_key(api_key: str) -> None:
+    """Save an OpenCode Go API key for later launches."""
+    value = api_key.strip()
+    if not value:
+        raise ValueError("Enter an OpenCode Go API key first.")
+    gui_settings.save_api_key(value)
+
+
+def clear_opencode_api_key() -> None:
+    """Remove the locally saved OpenCode Go API key."""
+    gui_settings.save_api_key(None)
 
 
 def model_name() -> str:

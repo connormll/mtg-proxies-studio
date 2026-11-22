@@ -39,14 +39,18 @@ The **Replace** button on a card tile asks Kimi to suggest cards that achieve th
 
 Suggestions are checked against the local Scryfall database before they are shown. Cards that cannot be resolved, the original card, and cards already in the deck are filtered out. If a suggestion is outside the deck's color identity, the dialog marks it. Choosing a suggestion replaces every copy of the original card and keeps the quantity; the dialog stays open until you pick a card, and nothing changes if you close it.
 
-The feature requires [OpenCode Go](https://opencode.ai/docs/go/) and an API key with an active subscription. Create a personal key in the OpenCode Console and export it before starting the server:
+The feature requires [OpenCode Go](https://opencode.ai/docs/go/) and an API key with an active subscription. Create a personal key in the OpenCode Console, then paste it into the **Connect OpenCode Go** form the first time you click **Replace**. The key is saved in the app's user settings folder with owner-only permissions, so the next launch remembers it. **Manage key** in the replacement dialog replaces or forgets the saved key.
+
+You can also provide the key through the environment before starting the server:
 
 ```bash
 export OPENCODE_API_KEY="oc_sk_..."
 mtg-proxies gui
 ```
 
-`OPENCODE_GO_API_KEY` is accepted as an alias. The default model is `kimi-k3.1-pro`. Kimi always reasons before answering, so the GUI requests the `low` reasoning effort by default; set `MTG_PROXIES_SUGGESTION_EFFORT=high` or `max` if you want slower, deeper analysis. Set `MTG_PROXIES_SUGGESTION_MODEL` to another model ID, or `MTG_PROXIES_SUGGESTION_BASE_URL` if your Go endpoint differs. The request sends only the selected card's data and your decklist card names; no generated files or artwork leave the machine.
+`OPENCODE_GO_API_KEY` is accepted as an alias, and an environment key takes precedence over the saved key. The default model is `kimi-k3.1-pro`. Kimi always reasons before answering, so the GUI requests the `low` reasoning effort by default; set `MTG_PROXIES_SUGGESTION_EFFORT=high` or `max` if you want slower, deeper analysis. Set `MTG_PROXIES_SUGGESTION_MODEL` to another model ID, or `MTG_PROXIES_SUGGESTION_BASE_URL` if your Go endpoint differs. The request sends only the selected card's data and your decklist card names; no generated files or artwork leave the machine.
+
+The saved key lives in `config.json` under the platform settings folder: `~/.config/mtg-proxies/` on Linux (or `$XDG_CONFIG_HOME/mtg-proxies/`), `~/Library/Application Support/mtg-proxies/` on macOS, and `%APPDATA%\mtg-proxies\` on Windows. Set `MTG_PROXIES_CONFIG_DIR` to use a different folder.
 
 ## Printing and cutting
 
@@ -58,7 +62,7 @@ The cutter section only appears for the MakerCraft layout. If you do not use a c
 
 ## Saved state
 
-The decklist, quantities, card selections, print options, and import warnings are saved in the browser's `localStorage`. The OpenCode API key is read from the server environment and is never saved in the browser. Generated files are not saved in `localStorage` and must be generated again after reopening or reloading the app.
+The decklist, quantities, card selections, print options, and import warnings are saved in the browser's `localStorage`. The OpenCode API key is read from the server environment or the local settings file and is never saved in the browser or in workspace backups. Generated files are not saved in `localStorage` and must be generated again after reopening or reloading the app.
 
 ## Backups
 
@@ -105,5 +109,5 @@ uv run --extra web --extra dev pytest tests/gui_test.py
 - **Printing is slightly small or large**: verify the PDF print scale is 100% / Actual size and that the paper size matches the GUI setting. Do not use fit-to-page.
 - **USB permission error**: the cutter normally requires membership in the `lp` group. If `usblp` claimed the interface, run `sudo modprobe -r usblp` and check again. The same advice and cut settings are in [`makercraft.md`](makercraft.md).
 - **No cutter found**: check the USB cable, power, and `lsusb`; the device appears as `0483:5750`. Use the refresh button in the cutter panel after connecting it.
-- **Replace says an API key is missing**: set `OPENCODE_API_KEY` to an OpenCode Go key before starting `mtg-proxies gui`, then restart the server. A key without an active Go subscription is rejected by OpenCode Go.
+- **Replace says an API key is missing**: paste an OpenCode Go key into the form in the replacement dialog. The key is remembered for later launches; if you prefer the environment, set `OPENCODE_API_KEY` before starting `mtg-proxies gui`. A key without an active Go subscription is rejected by OpenCode Go.
 - **Replace times out**: Kimi reasons before answering and can take several minutes on a large deck list. The GUI waits up to five minutes, then asks you to try again. A dropped connection is reported separately as unreachable.

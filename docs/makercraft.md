@@ -520,21 +520,24 @@ still valid.
 
 ## Card size note
 
-With the default `--border_crop 14`, the printed and cut cards are about
-61.1 × 86.5 mm. That is slightly smaller than a real card and is convenient for
-sleeving a proxy over a real common. The cut template matches that printed size.
+MakerCraft mode uses rounded corners by default, so the printed and cut cards
+are about **63.5 × 88.9 mm**: full size, matching or slightly exceeding a real
+card. The cut template matches that printed size. Rounding does not change the
+card outline, so rounded cards do not use the smaller sleeve-proxy border crop.
 
-If you want exact 63.5 × 88.9 mm cards, regenerate the PDF and template with:
+If you want the smaller sleeve proxy, pass `--corner-radius 0`. The default
+`--border_crop 14` then gives cards about 61.1 × 86.5 mm, which slip into a
+sleeve in front of a real common. Regenerate the PDF and template together:
 
 ```bash
 mtg-proxies print decklist.txt proxies.pdf \
   --paper 8.5x11 --gap 1.5 \
-  --border_crop 0 \
+  --corner-radius 0 \
   --makercraft
 ```
 
-Changing the border crop changes the card grid and the cut template; keep the
-matching PDF and `makercraft.plt` together.
+Changing the corner radius or border crop changes the card grid and the cut
+template; keep the matching PDF and `makercraft.plt` together.
 
 ## Why not SCAL?
 

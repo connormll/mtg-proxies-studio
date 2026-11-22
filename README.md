@@ -130,7 +130,7 @@ To make a choice permanent, use `mtg-proxies convert decklist.txt decklist.txt -
 1 Command Tower (C15) 281
 ```
 
-Cards have rounded corners with a 2.5mm radius by default. Use `--corner-radius 0` to disable rounding, or a value between 0 and 10mm.
+Cards have rounded corners with a 2.5mm radius by default. Rounded cards print at their full nominal size (about 63.5 × 88.9 mm), so after a 3 mm corner rounder they match or slightly exceed a real card. Use `--corner-radius 0` to print square-cornered cards with the smaller sleeve-proxy border crop, or any radius between 0 and 10 mm.
 
 A companion SVG cut file is written next to the output by default, unless `--makercraft` is used without `--cut-file`. It uses the same page size and millimetre coordinates as the print, and all red paths are cut lines. For a multi-page output, the files are numbered, e.g. `decklist_cut_1.svg`, `decklist_cut_2.svg`. Use `--cut-file cuts.svg` to choose a different base name, or `--no-cut-file` to disable it.
 
@@ -155,14 +155,16 @@ The GUI defaults to US Letter, while the CLI defaults to A4. Change the paper se
 
 Each card tile has a **Replace** action. It opens a dialog where Kimi compares the card with the rest of the deck and suggests cards that achieve the same effect, ranked by how closely they match the original role and mana value. Pick one to replace every copy in the editor. Nothing changes until you choose a suggestion.
 
-The feature uses [OpenCode Go](https://opencode.ai/docs/go/) and needs an API key with an active Go subscription. Create a key in the OpenCode Console, then start the GUI with it:
+The feature uses [OpenCode Go](https://opencode.ai/docs/go/) and needs an API key with an active Go subscription. Create a key in the OpenCode Console, then paste it into the **Connect OpenCode Go** form the first time you click **Replace**. The key is saved in your user settings folder with owner-only permissions, so later launches remember it. Use **Manage key** in the replacement dialog to replace or forget it later.
+
+You can still provide the key through the environment instead:
 
 ```bash
 export OPENCODE_API_KEY="oc_sk_..."
 mtg-proxies gui
 ```
 
-`OPENCODE_GO_API_KEY` also works as an alias. The default model is `kimi-k3.1-pro` with low reasoning effort so suggestions return quickly; set `MTG_PROXIES_SUGGESTION_EFFORT=high` or `max` for deeper analysis, or `MTG_PROXIES_SUGGESTION_MODEL` to use another Go model. Kimi's suggestions are validated against the local Scryfall database, so unknown or duplicate cards are dropped. The selected card and your decklist card names are sent to OpenCode Go only when you ask for suggestions; generated files and artwork stay on your machine.
+`OPENCODE_GO_API_KEY` also works as an alias, and an environment key takes precedence over the saved key. The default model is `kimi-k3.1-pro` with low reasoning effort so suggestions return quickly; set `MTG_PROXIES_SUGGESTION_EFFORT=high` or `max` for deeper analysis, or `MTG_PROXIES_SUGGESTION_MODEL` to use another Go model. Kimi's suggestions are validated against the local Scryfall database, so unknown or duplicate cards are dropped. The selected card and your decklist card names are sent to OpenCode Go only when you ask for suggestions; generated files and artwork stay on your machine.
 
 ### MakerCraft / Skycut C10
 
@@ -220,10 +222,10 @@ This prints thin black cut lines along every card edge, running to the page edge
 Handcut mode differs from the default in three ways:
 
 - It uses the largest grid that fits, so Letter paper gets nine cards in a 3 × 3 grid.
-- Cards are square-cornered unless you pass `--corner-radius`. Square corners are easier to trim; if you want round corners, print with the default `--corner-radius 2.5` and use a 2.5 mm corner punch after cutting.
+- Cards are square-cornered unless you pass `--corner-radius`. Square corners are easier to trim; if you want round corners, print with `--corner-radius 3` and use a 3 mm corner rounder after cutting. Rounded cards print at full size.
 - SVG cut files are skipped unless you pass `--cut-file`.
 
-The default border crop still applies, so the finished cards are about 61.1 × 86.5 mm. That is intentional: the proxy slips into a sleeve in front of a real card. Use `--border_crop 0` if you want the full 63.5 × 88.9 mm card size.
+With the default square corners, the border crop applies, so the finished cards are about 61.1 × 86.5 mm. That is intentional: the proxy slips into a sleeve in front of a real card. Pass `--corner-radius 3` for full-size rounded cards, or use `--border_crop 0` for a full 63.5 × 88.9 mm square card.
 
 Leave `--gap` at 0 for the simplest workflow: cards are edge to edge and one straight cut separates each pair. If you set a gap, the tool prints two lines around each gutter, one on each card edge; cut along both to keep every card at the finished size.
 
@@ -275,13 +277,16 @@ options:
   --dpi DPI             dpi of output file for raster formats (png, jpg); ignored for pdf (default: 300)
   --paper WIDTHxHEIGHT  paper size in inches, or a4/letter (default: a4)
   --scale FLOAT         scaling factor for printed cards (default: 1.0)
-  --border_crop PIXELS  how much to crop inner borders of printed cards, in source image pixels (default: 14)
+  --border_crop PIXELS  how much to crop inner borders of printed cards, in
+                        source image pixels; ignored for rounded cards, which
+                        print at full size (default: 14)
   --gap MM              gap between cards in mm, between 0 and 3 (default: 0.0)
   --bleed [MM]          add mirrored-edge bleed around each card in mm, between 0 and 10; use without a value for 3 mm (default: 0, or 2 with --slider)
   --corner-radius, --corner_radius MM
                         corner radius of printed cards in mm, between 0 and
-                        10; 0 disables rounding (default: 2.5, or 0 with
-                        --handcut/--slider)
+                        10; 0 disables rounding and keeps the sleeve-proxy
+                        border crop; rounded cards print at full size
+                        (default: 2.5, or 0 with --handcut/--slider)
   --cut-file PATH       write SVG cut file(s) for a cutting machine; PATH sets the base name
                         (default: <outfile>_cut.svg, numbered per page for multi-page outputs)
   --no-cut-file         do not write SVG cut file(s)

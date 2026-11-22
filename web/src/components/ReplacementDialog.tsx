@@ -1,8 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import {
+  clearReplacementKey,
   errorMessage,
+  getReplacementSettings,
   pendingJob,
+  saveReplacementKey,
   startReplacementSuggestions,
   waitForJob,
 } from "../api";
@@ -10,6 +19,7 @@ import type {
   CardEntry,
   Job,
   ReplacementResult,
+  ReplacementSettings,
   ReplacementSuggestion,
 } from "../types";
 import { CloseIcon, SparkIcon, WarningIcon } from "./Icons";
@@ -61,6 +71,11 @@ export function ReplacementDialog({
   const [result, setResult] = useState<ReplacementResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<ReplacementSettings | null>(null);
+  const [showKeyForm, setShowKeyForm] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [keyError, setKeyError] = useState<string | null>(null);
+  const [savingKey, setSavingKey] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const onCloseRef = useRef(onClose);
@@ -103,16 +118,100 @@ export function ReplacementDialog({
         if (controller.signal.aborted) return;
         setError(errorMessage(reason));
         setJob(finalJob?.status === "failed" ? finalJob : null);
+        void getReplacementSettings()
+          .then((next) => {
+            if (controller.signal.aborted) return;
+            setSettings(next);
+            if (!next.configured) setShowKeyForm(true);
+          })
+          .catch(() => {
+            // Keep the original error if the settings cannot be read.
+          });
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
     })();
   }, [card.printing_id, deck]);
 
-  useEffect(() => {
-    load();
-    return () => abortRef.current?.abort();
+  const checkSettings = useCallback(() => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    setJob(null);
+
+    void (async () => {
+      try {
+        const next = await getReplacementSettings();
+        if (controller.signal.aborted) return;
+        setSettings(next);
+        if (next.configured) {
+          setShowKeyForm(false);
+          load();
+        } else {
+          setShowKeyForm(true);
+          setLoading(false);
+        }
+      } catch (reason) {
+        if (controller.signal.aborted) return;
+        setLoading(false);
+        setError(errorMessage(reason));
+      }
+    })();
   }, [load]);
+
+  useEffect(() => {
+    checkSettings();
+    return () => abortRef.current?.abort();
+  }, [checkSettings]);
+
+  async function handleSaveKey(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = apiKey.trim();
+    if (!value) {
+      setKeyError("Paste an OpenCode Go API key first.");
+      return;
+    }
+
+    setSavingKey(true);
+    setKeyError(null);
+    try {
+      const next = await saveReplacementKey(value);
+      setSettings(next);
+      setApiKey("");
+      setShowKeyForm(false);
+      checkSettings();
+    } catch (reason) {
+      setKeyError(errorMessage(reason));
+    } finally {
+      setSavingKey(false);
+    }
+  }
+
+  async function handleClearKey() {
+    if (
+      !window.confirm(
+        "Remove the saved OpenCode Go key from this computer? You can paste a new key at any time.",
+      )
+    ) {
+      return;
+    }
+
+    setSavingKey(true);
+    setKeyError(null);
+    try {
+      await clearReplacementKey();
+      setApiKey("");
+      setShowKeyForm(false);
+      checkSettings();
+    } catch (reason) {
+      setKeyError(errorMessage(reason));
+    } finally {
+      setSavingKey(false);
+    }
+  }
 
   useEffect(() => {
     const previous =
@@ -230,20 +329,106 @@ export function ReplacementDialog({
             </div>
           )}
 
-          {!loading && error && (
+          {!loading && showKeyForm && (
+            <form
+              className="replacement-key"
+              onSubmit={(event) => void handleSaveKey(event)}
+            >
+              <div>
+                <strong>Connect OpenCode Go</strong>
+                <p>
+                  Kimi replacement suggestions need an OpenCode Go key. Paste
+                  one here once and this computer will remember it for later
+                  launches.
+                </p>
+              </div>
+              <label className="field" htmlFor="opencode-api-key">
+                <span className="field-label">OpenCode Go API key</span>
+                <input
+                  id="opencode-api-key"
+                  type="password"
+                  value={apiKey}
+                  placeholder="oc_sk_..."
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={savingKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                />
+                <span className="field-hint">
+                  Saved in your user settings folder with owner-only
+                  permissions. It is never stored in the browser or in
+                  workspace backups.
+                </span>
+              </label>
+              {keyError && (
+                <p className="form-error" role="alert">
+                  {keyError}
+                </p>
+              )}
+              <div className="replacement-key-actions">
+                <button
+                  className="button button-primary"
+                  type="submit"
+                  disabled={savingKey || !apiKey.trim()}
+                >
+                  {savingKey ? "Saving…" : "Save key"}
+                </button>
+                <a
+                  className="button button-quiet"
+                  href="https://opencode.ai/console"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Get a key
+                </a>
+                {settings?.source === "saved" && (
+                  <button
+                    className="button button-quiet"
+                    type="button"
+                    disabled={savingKey}
+                    onClick={() => void handleClearKey()}
+                  >
+                    Forget saved key
+                  </button>
+                )}
+                {settings?.configured && (
+                  <button
+                    className="button button-quiet"
+                    type="button"
+                    disabled={savingKey}
+                    onClick={() => {
+                      setKeyError(null);
+                      setShowKeyForm(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
+
+          {!loading && !showKeyForm && error && (
             <div className="replacement-error">
               <p className="form-error">{error}</p>
               <button
                 className="button button-secondary"
                 type="button"
-                onClick={load}
+                onClick={() => {
+                  if (settings?.configured) load();
+                  else checkSettings();
+                }}
               >
                 Try again
               </button>
             </div>
           )}
 
-          {!loading && !error && result && result.suggestions.length === 0 && (
+          {!loading &&
+            !showKeyForm &&
+            !error &&
+            result &&
+            result.suggestions.length === 0 && (
             <div className="replacement-error">
               <p className="empty-copy">
                 Kimi did not return a card that exists in Scryfall. Try again
@@ -259,7 +444,11 @@ export function ReplacementDialog({
             </div>
           )}
 
-          {!loading && !error && result && result.suggestions.length > 0 && (
+          {!loading &&
+            !showKeyForm &&
+            !error &&
+            result &&
+            result.suggestions.length > 0 && (
             <>
               <div className="replacement-intro">
                 <div>
@@ -318,7 +507,26 @@ export function ReplacementDialog({
             Kimi suggestions send this card and your decklist card names to
             OpenCode Go. Artwork and files stay on this machine.
           </p>
-          {result && <span>Suggested by {result.model} via OpenCode Go</span>}
+          <div className="replacement-footer-meta">
+            {result && (
+              <span>Suggested by {result.model} via OpenCode Go</span>
+            )}
+            {settings?.source === "environment" && (
+              <span>Key from OPENCODE_API_KEY</span>
+            )}
+            {settings?.source === "saved" && !showKeyForm && (
+              <button
+                className="button button-quiet"
+                type="button"
+                onClick={() => {
+                  setKeyError(null);
+                  setShowKeyForm(true);
+                }}
+              >
+                Manage key
+              </button>
+            )}
+          </div>
         </footer>
       </div>
     </div>,

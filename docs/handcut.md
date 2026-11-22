@@ -25,8 +25,8 @@ Then:
 3. Cut the four vertical lines first, then rotate the strips and cut the four
    horizontal lines. A guillotine or rotary trimmer gives the most consistent
    edges.
-4. If you use `--corner-radius 2.5`, round the four corners with a 2.5 mm corner
-   punch after trimming.
+4. If you use `--corner-radius 3`, round the four corners with a 3 mm corner
+   punch after trimming. Rounded cards print at full size.
 
 The lines run along the card boundaries, so they are removed by the cut itself.
 They do not print across the card artwork.
@@ -46,19 +46,21 @@ With `--handcut` the tool:
   separates two neighbouring cards, and the whole sheet comes apart with four
   vertical and four horizontal cuts.
 - Sets `--corner-radius 0` by default. Square corners are what a straight
-  trimmer produces. An explicit `--corner-radius` still works, but the printed
-  card art will then have rounded corners while the cut card is square; use a
-  corner punch to remove the white corner triangles.
+  trimmer produces. An explicit `--corner-radius` still works: rounded cards
+  print at full size, and a matching corner punch removes the white corner
+  triangles.
 - Adds **thin black cut lines** along every card edge. Each line runs from one
   paper edge to the other, so it remains visible on the strips after the first
   cuts.
 - Skips the SVG cut file unless you explicitly pass `--cut-file`.
 
-The finished card size is controlled by `--border_crop`, exactly as in a normal
-print. The default of 14 source pixels trims the outer border of the scan and
-gives a finished size of about **61.1 × 86.5 mm**. That proxy fits in a sleeve
-in front of a real common card. For a full **63.5 × 88.9 mm** card, use
-`--border_crop 0`.
+The finished card size depends on the corners. Square-cornered cards keep the
+`--border_crop` shrink (about **61.1 × 86.5 mm** with the default crop of 14),
+which fits in a sleeve in front of a real common card. Rounded cards, created
+with `--corner-radius`, print at their full nominal size (about
+**63.5 × 88.9 mm**), because a physical corner rounder does not change the
+card's width or height. That matches or slightly exceeds a real card after a
+3 mm rounder. For a full-size square card, use `--border_crop 0`.
 
 ## Cutting order
 
@@ -69,8 +71,9 @@ For a 3 × 3 sheet with no gap:
    shifts.
 2. Rotate each strip 90° and cut along the four horizontal lines. The lines
    run across the whole strip, so each piece still has a guide.
-3. Check one card against a real card. A trimmed proxy should be a little
-   smaller than a real card with the default border crop.
+3. Check one card against a real card. With square corners and the default
+   border crop, a trimmed proxy should be a little smaller than a real card.
+   With `--corner-radius`, it should match or slightly exceed one.
 
 On the last page, only the lines around the cards that actually exist are
 printed; empty slots are not cut.
@@ -87,8 +90,9 @@ printed; empty slots are not cut.
   cutting through the backing.
 - Set the printer to **Actual size / 100 %**, Letter, portrait. Check the
   printer's scale with a ruler before cutting a full deck: print page 1, measure
-  a card, and confirm it is about 61.1 × 86.5 mm with the default crop (or
-  63.5 × 88.9 mm with `--border_crop 0`).
+  a card, and confirm it is about 61.1 × 86.5 mm with the default square
+  corners (or 63.5 × 88.9 mm with `--border_crop 0`). Rounded cards with
+  `--corner-radius` should measure about 63.5 × 88.9 mm.
 - If your printer cannot print close to the edge, the outer ends of the lines
   may be clipped. The lines still extend inward and remain aligned with the
   cut, so trim with a straight edge if a line is short. If an entire line is
@@ -141,8 +145,10 @@ edges.
   PDF. The lines are thin; some PDF viewers hide hairlines at low zoom.
 - **A line is offset from the card edge:** the PDF is being printed scaled or
   borderless. Reprint at 100 % / Actual size.
-- **Cards are not the size you expected:** check `--border_crop`. The default
-  crop of 14 gives 61.1 × 86.5 mm; `--border_crop 0` gives 63.5 × 88.9 mm.
+- **Cards are not the size you expected:** check `--border_crop` and
+  `--corner-radius`. Square corners with the default crop of 14 give
+  61.1 × 86.5 mm; rounded cards give 63.5 × 88.9 mm; square cards with
+  `--border_crop 0` also give 63.5 × 88.9 mm.
 - **The last page has one card and only two lines each way:** that is
   intentional. The lines only cover the cards that exist on the page.
 - **Edges are ragged:** use a sharper blade or a guillotine. A rotary trimmer

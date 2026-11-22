@@ -32,6 +32,17 @@ SLIDER_DEFAULT_BLEED = 2.0
 SLIDER_GUIDE_STROKE = 0.15
 
 
+def effective_border_crop(border_crop: int, corner_radius: float) -> int:
+    """Return the border crop that should be used for the printed card size.
+
+    A physical corner rounder does not change a card's width or height, so a
+    rounded proxy only matches a real card when it is printed at its full
+    nominal size. Square-cornered cards keep the default border crop, which
+    makes the smaller proxy that slips into a sleeve in front of a real card.
+    """
+    return 0 if corner_radius > 0 else border_crop
+
+
 def _trim_size(cardsize: np.ndarray, border_crop: int) -> np.ndarray:
     """Return the size of a card after the border crop is trimmed away."""
     return cardsize * (image_size - 2 * border_crop) / image_size
@@ -409,6 +420,7 @@ def write_cut_files(
         raise ValueError(f"Gap must not be negative: {gap}")
     if not 0 <= corner_radius <= MAX_CORNER_RADIUS:
         raise ValueError(f"Corner radius must be between 0 and {MAX_CORNER_RADIUS:g} mm: {corner_radius}")
+    border_crop = effective_border_crop(border_crop, corner_radius)
 
     N, trim_size, margin = _layout(papersize, cardsize, border_crop, gap, max_cards=max_cards)
     cards_per_sheet = int(np.prod(N))
@@ -585,6 +597,7 @@ def print_cards_matplotlib(
         raise ValueError(f"Bleed must be between 0 and {MAX_BLEED:g} mm: {bleed}")
     if not 0 <= corner_radius <= MAX_CORNER_RADIUS:
         raise ValueError(f"Corner radius must be between 0 and {MAX_CORNER_RADIUS:g} mm: {corner_radius}")
+    border_crop = effective_border_crop(border_crop, corner_radius)
     gap /= 25.4
     bleed /= 25.4
     corner_radius /= 25.4
@@ -715,6 +728,7 @@ def print_cards_fpdf(
         raise ValueError(f"Bleed must be between 0 and {MAX_BLEED:g} mm: {bleed}")
     if not 0 <= corner_radius <= MAX_CORNER_RADIUS:
         raise ValueError(f"Corner radius must be between 0 and {MAX_CORNER_RADIUS:g} mm: {corner_radius}")
+    border_crop = effective_border_crop(border_crop, corner_radius)
     if registration_marks:
         if not 0 < mark_inset < min(papersize) / 2:
             raise ValueError(f"Registration mark inset is outside the page: {mark_inset} mm")

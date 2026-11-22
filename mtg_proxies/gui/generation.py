@@ -17,6 +17,7 @@ from mtg_proxies.gui.progress import ProgressReporter
 from mtg_proxies.makercraft import write_plt_file
 from mtg_proxies.print_cards import (
     _layout,
+    effective_border_crop,
     handcut_layout,
     makercraft_layout,
     print_cards_fpdf,
@@ -97,6 +98,7 @@ def _layout_details(
     corner_radius = options.corner_radius
     if corner_radius is None:
         corner_radius = 0.0 if options.mode in {"handcut", "slider"} else 2.5
+    border_crop = effective_border_crop(options.border_crop, corner_radius)
 
     max_cards: np.ndarray | None = None
     mark_inset = options.mark_inset
@@ -106,7 +108,7 @@ def _layout_details(
         max_cards, mark_inset = makercraft_layout(
             papersize,
             cardsize,
-            options.border_crop,
+            border_crop,
             options.gap,
             mark_inset=options.mark_inset,
             mark_arm=options.mark_arm,
@@ -115,13 +117,13 @@ def _layout_details(
         n_cards, _, _ = _layout(
             papersize,
             cardsize,
-            options.border_crop,
+            border_crop,
             options.gap,
             max_cards=max_cards,
         )
         text = f"{int(np.prod(max_cards))} cards/page ({max_cards[0]}x{max_cards[1]}), {mark_inset:g} mm mark inset"
     elif options.mode == "handcut":
-        n_cards, trim_size, _ = handcut_layout(papersize, cardsize, options.border_crop, options.gap)
+        n_cards, trim_size, _ = handcut_layout(papersize, cardsize, border_crop, options.gap)
         text = (
             f"{int(np.prod(n_cards))} cards/page ({n_cards[0]}x{n_cards[1]}), "
             f"{trim_size[0]:.1f} x {trim_size[1]:.1f} mm finished cards"
@@ -130,7 +132,7 @@ def _layout_details(
         n_cards, _, margin, layout_gap = slider_layout(
             papersize,
             cardsize,
-            options.border_crop,
+            border_crop,
             bleed=bleed,
             gap=options.gap,
         )
@@ -141,7 +143,7 @@ def _layout_details(
         finger_margin = min(float(margin[0]), float(margin[1]))
         text += f", {finger_margin:.1f} mm minimum page margin"
     else:
-        n_cards, _, _ = _layout(papersize, cardsize, options.border_crop, layout_gap)
+        n_cards, _, _ = _layout(papersize, cardsize, border_crop, layout_gap)
         text = f"{int(np.prod(n_cards))} cards/page ({n_cards[0]}x{n_cards[1]})"
 
     cards_per_page = int(np.prod(n_cards))
@@ -188,6 +190,7 @@ def generate_files(request: GenerateRequest, job_dir: Path, report: ProgressRepo
         raise ValueError("No cards are left to print after applying the exclusion filters.")
 
     layout_text, cards_per_page, max_cards, bleed, corner_radius, layout_gap, mark_inset = _layout_details(request)
+    border_crop = effective_border_crop(options.border_crop, corner_radius)
 
     papersize = np.array([options.paper_width, options.paper_height]) * 25.4
     cardsize = np.array([2.5, 3.5]) * 25.4 * options.scale
@@ -213,7 +216,7 @@ def generate_files(request: GenerateRequest, job_dir: Path, report: ProgressRepo
         pdf_path,
         papersize=papersize,
         cardsize=cardsize,
-        border_crop=options.border_crop,
+        border_crop=border_crop,
         background_color=background_color,
         cropmarks=options.cropmarks and options.mode not in {"handcut", "slider"},
         gap=options.gap,
@@ -236,7 +239,7 @@ def generate_files(request: GenerateRequest, job_dir: Path, report: ProgressRepo
             job_dir / "makercraft.plt",
             papersize=papersize,
             cardsize=cardsize,
-            border_crop=options.border_crop,
+            border_crop=border_crop,
             gap=options.gap,
             corner_radius=corner_radius,
             mark_inset=mark_inset,
@@ -254,7 +257,7 @@ def generate_files(request: GenerateRequest, job_dir: Path, report: ProgressRepo
             job_dir / "proxies_cut.svg",
             papersize=papersize,
             cardsize=cardsize,
-            border_crop=options.border_crop,
+            border_crop=border_crop,
             gap=layout_gap,
             corner_radius=corner_radius,
             max_cards=max_cards,

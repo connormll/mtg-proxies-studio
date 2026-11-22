@@ -154,6 +154,39 @@ def test_write_cut_files_rounded(tmp_path: Path) -> None:
     assert "A 2.500 2.500" in paths[0].attrib["d"]
 
 
+def test_effective_border_crop_keeps_rounded_cards_full_size() -> None:
+    from mtg_proxies.print_cards import effective_border_crop
+
+    # A physical corner rounder does not change the card outline, so rounded
+    # cards print at full size instead of shrinking into a sleeve proxy.
+    assert effective_border_crop(14, 2.5) == 0
+    assert effective_border_crop(14, 0.0) == 14
+    assert effective_border_crop(0, 2.5) == 0
+
+
+def test_write_cut_files_rounded_ignores_border_crop(tmp_path: Path) -> None:
+    import xml.etree.ElementTree as ET
+
+    import numpy as np
+
+    from mtg_proxies import write_cut_files
+
+    cut_files = write_cut_files(
+        1,
+        tmp_path / "cut.svg",
+        papersize=np.array([100.0, 100.0]),
+        cardsize=np.array([50.0, 70.0]),
+        border_crop=14,
+        gap=0,
+        corner_radius=2.5,
+    )
+
+    path = ET.parse(cut_files[0]).getroot().findall(".//{http://www.w3.org/2000/svg}path")[0]
+    # Full 50 mm width: the straight edge ends 2.5 mm short of the 50 mm edge,
+    # not at the ~48.1 mm width left by the default border crop.
+    assert "H 47.500" in path.attrib["d"]
+
+
 def test_write_cut_files_max_cards(tmp_path: Path) -> None:
     import numpy as np
 

@@ -14,6 +14,7 @@ from mtg_proxies.print_cards import (
     MAX_CORNER_RADIUS,
     _layout,
     _trim_origin,
+    effective_border_crop,
 )
 
 HPGL_SCALE = 40  # Skycut HPGL units per millimetre
@@ -173,6 +174,7 @@ def write_plt_file(
         raise ValueError(f"Registration mark inset must be positive: {mark_inset}")
     if overcut < 0:
         raise ValueError(f"Overcut must not be negative: {overcut}")
+    border_crop = effective_border_crop(border_crop, corner_radius)
 
     n_cards, trim_size, margin = _layout(papersize, cardsize, border_crop, gap, max_cards=max_cards)
     cards_per_sheet = int(np.prod(n_cards))

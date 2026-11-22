@@ -380,6 +380,7 @@ export function OptionsPanel({
                 step={1}
                 unit="px"
                 integer
+                hint="Ignored for rounded cards, which print at full size."
                 onChange={(border_crop) => onChange({ border_crop })}
               />
             </div>

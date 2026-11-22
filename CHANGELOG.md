@@ -17,6 +17,8 @@
 
 ### Fix
 
+- Remember the OpenCode Go API key across launches: paste it into the replacement dialog once, then replace or forget it from the same dialog; environment keys still take precedence. The key is stored owner-only in the local settings folder, never in the browser or workspace backups
+- Print corner-rounded cards at full size (about 63.5 × 88.9 mm) instead of the smaller sleeve-proxy size, so a 3 mm corner rounder leaves them matching a real card; square-cornered cards keep the border crop
 - Skip cards that cannot be found during GUI import with a warning instead of blocking the whole deck, and skip printings missing from the local Scryfall database during generation
 - Use low Kimi reasoning effort and a bounded completion size by default, so replacement suggestions return much faster; `MTG_PROXIES_SUGGESTION_EFFORT=high` or `max` restores deeper analysis
 - Wait up to five minutes for Kimi replacement suggestions and report slow responses as a timeout instead of a connection failure

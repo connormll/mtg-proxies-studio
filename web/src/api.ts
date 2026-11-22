@@ -7,6 +7,7 @@ import type {
   PrintingsResult,
   PrintingScope,
   ReplacementRequest,
+  ReplacementSettings,
   SendToCutterResult,
 } from "./types";
 
@@ -82,6 +83,23 @@ export function startReplacementSuggestions(
   payload: ReplacementRequest,
 ): Promise<{ job_id: string }> {
   return post("/api/replace/suggestions", payload);
+}
+
+export function getReplacementSettings(): Promise<ReplacementSettings> {
+  return request("/api/replace/settings");
+}
+
+export function saveReplacementKey(
+  apiKey: string,
+): Promise<ReplacementSettings> {
+  return request("/api/replace/settings", {
+    method: "PUT",
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+}
+
+export function clearReplacementKey(): Promise<ReplacementSettings> {
+  return request("/api/replace/settings", { method: "DELETE" });
 }
 
 export function getCutterDevices(): Promise<CutterDevicesResult> {

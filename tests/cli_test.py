@@ -150,6 +150,59 @@ def test_print_handcut_keeps_explicit_corner_radius(tmp_path: Path) -> None:
     assert print_cards.call_args.kwargs["corner_radius"] == pytest.approx(2.5)
 
 
+def test_print_rounded_cards_use_full_size(tmp_path: Path) -> None:
+    """Rounded cards should ignore the sleeve-proxy border crop."""
+    from mtg_proxies.cli import main
+
+    argv = [
+        "mtg-proxies",
+        "print",
+        "decklist.txt",
+        str(tmp_path / "deck.pdf"),
+        "--paper",
+        "8.5x11",
+    ]
+
+    with (
+        patch("sys.argv", argv),
+        patch("mtg_proxies.cli.parse_decklist_spec", return_value=object()),
+        patch("mtg_proxies.cli.fetch_scans_scryfall", return_value=["front.png"]),
+        patch("mtg_proxies.cli.print_cards_fpdf") as print_cards,
+    ):
+        main()
+
+    kwargs = print_cards.call_args.kwargs
+    assert kwargs["corner_radius"] == pytest.approx(2.5)
+    assert kwargs["border_crop"] == 0
+
+
+def test_print_handcut_rounded_cards_use_full_size(tmp_path: Path) -> None:
+    """An explicit corner radius should make handcut cards full-size too."""
+    from mtg_proxies.cli import main
+
+    argv = [
+        "mtg-proxies",
+        "print",
+        "decklist.txt",
+        str(tmp_path / "handcut.pdf"),
+        "--paper",
+        "8.5x11",
+        "--handcut",
+        "--corner-radius",
+        "3",
+    ]
+
+    with (
+        patch("sys.argv", argv),
+        patch("mtg_proxies.cli.parse_decklist_spec", return_value=object()),
+        patch("mtg_proxies.cli.fetch_scans_scryfall", return_value=["front.png"]),
+        patch("mtg_proxies.cli.print_cards_fpdf") as print_cards,
+    ):
+        main()
+
+    assert print_cards.call_args.kwargs["border_crop"] == 0
+
+
 def test_print_handcut_rejects_makercraft(tmp_path: Path) -> None:
     """Hand cutting and camera registration marks are separate workflows."""
     from mtg_proxies.cli import main
