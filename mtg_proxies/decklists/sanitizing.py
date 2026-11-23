@@ -76,7 +76,7 @@ def validate_card_name(card_name: str) -> tuple[str | None, list[ParseWarning]]:
 def get_print_warnings(card: dict) -> list[str]:
     """Return warnings for low-resolution scans."""
     warnings = []
-    if not card["highres_image"] or card["digital"]:
+    if not scryfall.is_high_res(card) or card["digital"]:
         warnings.append("low resolution scan")
     if card["collector_number"][-1] in ["p", "s"]:
         warnings.append("promo")

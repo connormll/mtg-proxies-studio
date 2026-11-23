@@ -237,6 +237,20 @@ def get_faces(card: dict) -> list[dict]:
     raise ValueError(f"Unknown layout {card['layout']}")
 
 
+def is_high_res(card: dict) -> bool:
+    """Whether a printing has a high-resolution scan.
+
+    Scryfall's ``image_status`` is authoritative when present, so placeholder
+    or low-resolution scans are not mistaken for high-resolution images just
+    because ``highres_image`` is set. Older card data may only have the
+    ``highres_image`` flag.
+    """
+    status = card.get("image_status")
+    if status is not None:
+        return status == "highres_scan"
+    return bool(card.get("highres_image"))
+
+
 def print_score(card: dict, mode: Literal["best", "all", "choices"] = "best") -> int:
     """Score the quality of a printing. Higher is better."""
     points = 0
@@ -252,7 +266,7 @@ def print_score(card: dict, mode: Literal["best", "all", "choices"] = "best") ->
         points += 8
     if card["collector_number"][-1] not in ["p", "s"] and card["nonfoil"]:
         points += 16
-    if card["highres_image"]:
+    if is_high_res(card):
         points += 32
     if card["lang"] == "en":
         points += 64
@@ -268,14 +282,55 @@ def _print_preference_key(
     return -print_score(card, mode)
 
 
-def _artwork_preference_key(card: dict) -> tuple[int, str, str, str]:
+def _artwork_id(card: dict) -> str:
+    """Return the identifier used to group printings by artwork."""
+    try:
+        face = get_faces(card)[0]
+    except ValueError:  # Some layouts, such as newer art series, have no images
+        return card["id"]
+    return face.get("illustration_id") or card["id"]
+
+
+def _drop_low_res_duplicates(printings: list[dict]) -> list[dict]:
+    """Remove low-resolution prints when a high-resolution version of the same image exists.
+
+    The original order is preserved so that unrelated tie-breaking between
+    distinct artworks does not change.
+    """
+    high_res_artworks = {_artwork_id(card) for card in printings if is_high_res(card)}
+    return [card for card in printings if is_high_res(card) or _artwork_id(card) not in high_res_artworks]
+
+
+def _artwork_preference_key(
+    card: dict,
+    mode: Literal["best", "all", "choices"] = "best",
+) -> tuple[int, str, str, str]:
     """Sort key for choosing one printing per artwork: best score, then oldest print."""
     return (
-        -print_score(card),
+        -print_score(card, mode),
         card.get("released_at") or "9999-12-31",
         card.get("set") or "",
         str(card.get("collector_number") or ""),
     )
+
+
+def _artwork_winners(
+    printings: list[dict],
+    mode: Literal["best", "all", "choices"] = "best",
+) -> list[dict]:
+    """Return the best printing for each distinct artwork, preferring high resolution."""
+    by_artwork: dict[str, list[dict]] = defaultdict(list)
+    for card in _drop_low_res_duplicates(printings):
+        by_artwork[_artwork_id(card)].append(card)
+
+    return [min(group, key=lambda card: _artwork_preference_key(card, mode)) for group in by_artwork.values()]
+
+
+def _best_print(printings: list[dict], mode: Literal["best", "all", "choices"] = "best") -> dict:
+    """Return the highest-scoring print, ignoring low-resolution duplicate images."""
+    candidates = _drop_low_res_duplicates(printings)
+    scores = [print_score(card, mode) for card in candidates]
+    return candidates[scores.index(max(scores))]
 
 
 @overload
@@ -314,14 +369,18 @@ def recommend_print(
             oracle_id = current["oracle_id"]
 
     alternatives = cards_by_oracle_id()[oracle_id] if oracle_id is not None else get_cards(name=card_name)
-    scores = [print_score(card, mode) for card in alternatives]
 
     if mode == "best":
-        if current is not None and scores[alternatives.index(current)] == max(scores):
-            return current  # No better recommendation
-
-        # Return the first print with the highest score.
-        return alternatives[scores.index(max(scores))]
+        # Ignore low-resolution duplicates so a high-resolution print of the
+        # same image is recommended instead.
+        candidates = _drop_low_res_duplicates(alternatives)
+        scores = [print_score(card, mode) for card in candidates]
+        best_score = max(scores)
+        if current is not None:
+            for card, score in zip(candidates, scores, strict=True):
+                if card.get("id") == current.get("id") and score == best_score:
+                    return current  # No better recommendation
+        return candidates[scores.index(best_score)]
     if mode == "all":
         recommendations = sorted(alternatives, key=lambda card: _print_preference_key(card, mode))
 
@@ -334,15 +393,7 @@ def recommend_print(
         # Return all card in descending order
         return recommendations
     if mode == "choices":
-        choices_by_artwork: dict[str, list[dict]] = {}
-        for card in alternatives:
-            face = get_faces(card)[0]
-            artwork = face.get("illustration_id") or card["id"]
-            choices_by_artwork.setdefault(artwork, []).append(card)
-
-        choices = [
-            min(group, key=lambda card: _print_preference_key(card, mode)) for group in choices_by_artwork.values()
-        ]
+        choices = _artwork_winners(alternatives, mode)
         choices.sort(key=lambda card: _print_preference_key(card, mode))
 
         # Bring current print to front
@@ -424,11 +475,22 @@ def get_printings(card_name: str) -> list[dict]:
     if not printings:
         oracle_ids = oracle_ids_by_name().get(canonic_card_name(card_name), [])
         printings = [card for oracle_id in oracle_ids for card in cards_by_oracle_id().get(oracle_id, [])]
-    return sorted(printings, key=_print_preference_key)
+    printings.sort(key=_print_preference_key)
+    if printings and not is_high_res(printings[0]):
+        # The highest-scoring print may be a low-resolution duplicate, so put
+        # the higher-resolution print of the same image first instead.
+        recommended = _best_print(printings)
+        if is_high_res(recommended):
+            printings.remove(recommended)
+            printings.insert(0, recommended)
+    return printings
 
 
 def unique_artworks(printings: list[dict]) -> list[dict]:
     """Get the recommended printing for each distinct artwork.
+
+    When several printings share one artwork, a high-resolution scan is
+    preferred over a low-resolution scan.
 
     Args:
         printings: Printings of a single card, as returned by `get_printings`.
@@ -436,14 +498,7 @@ def unique_artworks(printings: list[dict]) -> list[dict]:
     Returns:
         One printing per artwork, recommended first.
     """
-    by_artwork: dict[str, list[dict]] = defaultdict(list)
-    for card in printings:
-        face = get_faces(card)[0]
-        artwork = face.get("illustration_id") or card["id"]
-        by_artwork[artwork].append(card)
-
-    best_by_artwork = [min(group, key=_artwork_preference_key) for group in by_artwork.values()]
-    return sorted(best_by_artwork, key=_print_preference_key)
+    return sorted(_artwork_winners(printings), key=_print_preference_key)
 
 
 def get_price(oracle_id: str, currency: str = "eur", foil: bool | None = None) -> float | None:

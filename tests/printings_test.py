@@ -76,6 +76,144 @@ def test_unique_artworks() -> None:
     assert artworks[0] == printings[0]
 
 
+def _fake_print(
+    card_id: str,
+    *,
+    illustration_id: str,
+    highres_image: bool,
+    image_status: str,
+    lang: str = "en",
+    released_at: str = "2020-01-01",
+) -> dict:
+    return {
+        "id": card_id,
+        "oracle_id": "test-oracle-id",
+        "name": "Test Card",
+        "set": "tst",
+        "collector_number": "1",
+        "released_at": released_at,
+        "layout": "normal",
+        "lang": lang,
+        "frame": "2015",
+        "border_color": "black",
+        "digital": False,
+        "nonfoil": True,
+        "highres_image": highres_image,
+        "image_status": image_status,
+        "illustration_id": illustration_id,
+        "image_uris": {"normal": f"https://example.test/{card_id}.jpg"},
+    }
+
+
+def test_unique_artworks_prefers_high_res_duplicate_over_english() -> None:
+    """A low-res English print must not beat a high-res print of the same image."""
+    from mtg_proxies import scryfall
+
+    low_res = _fake_print(
+        "low-res",
+        illustration_id="same-art",
+        highres_image=False,
+        image_status="lowres",
+        lang="en",
+        released_at="2020-01-01",
+    )
+    high_res = _fake_print(
+        "high-res",
+        illustration_id="same-art",
+        highres_image=True,
+        image_status="highres_scan",
+        lang="ja",
+        released_at="2021-01-01",
+    )
+
+    assert scryfall.print_score(low_res) > scryfall.print_score(high_res)
+    assert scryfall.unique_artworks([low_res, high_res]) == [high_res]
+
+
+def test_unique_artworks_uses_image_status_for_resolution() -> None:
+    """A low-res scan is rejected even when the highres_image flag is set."""
+    from mtg_proxies import scryfall
+
+    flagged_low_res = _fake_print(
+        "flagged-low-res",
+        illustration_id="same-art",
+        highres_image=True,
+        image_status="lowres",
+        released_at="2020-01-01",
+    )
+    high_res = _fake_print(
+        "high-res",
+        illustration_id="same-art",
+        highres_image=True,
+        image_status="highres_scan",
+        released_at="2021-01-01",
+    )
+
+    assert scryfall.unique_artworks([flagged_low_res, high_res]) == [high_res]
+
+
+def test_recommend_print_prefers_high_res_duplicate(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mtg_proxies import scryfall
+    from mtg_proxies.scryfall import scryfall as scryfall_module
+
+    low_res = _fake_print(
+        "low-res",
+        illustration_id="same-art",
+        highres_image=False,
+        image_status="lowres",
+        lang="en",
+    )
+    high_res = _fake_print(
+        "high-res",
+        illustration_id="same-art",
+        highres_image=True,
+        image_status="highres_scan",
+        lang="ja",
+    )
+    monkeypatch.setattr(scryfall_module, "cards_by_oracle_id", lambda: {"test-oracle-id": [low_res, high_res]})
+
+    assert scryfall.recommend_print(low_res) == high_res
+    assert scryfall.recommend_print(high_res) == high_res
+
+
+def test_get_printings_lists_high_res_duplicate_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mtg_proxies.scryfall import scryfall as scryfall_module
+
+    low_res = _fake_print(
+        "low-res",
+        illustration_id="same-art",
+        highres_image=False,
+        image_status="lowres",
+        lang="en",
+    )
+    high_res = _fake_print(
+        "high-res",
+        illustration_id="same-art",
+        highres_image=True,
+        image_status="highres_scan",
+        lang="ja",
+    )
+    monkeypatch.setattr(scryfall_module, "get_cards", lambda **_kwargs: [low_res, high_res])
+
+    printings = scryfall_module.get_printings("Test Card")
+
+    assert printings[0] == high_res
+    assert low_res in printings
+
+
+def test_low_res_warning_uses_image_status() -> None:
+    from mtg_proxies.decklists.sanitizing import get_print_warnings
+
+    flagged_low_res = _fake_print(
+        "flagged-low-res",
+        illustration_id="same-art",
+        highres_image=True,
+        image_status="lowres",
+    )
+
+    assert "low resolution scan" in get_print_warnings(flagged_low_res)
+
+
 def test_apply_printing_overrides() -> None:
     from mtg_proxies import scryfall
     from mtg_proxies.decklists import Decklist
